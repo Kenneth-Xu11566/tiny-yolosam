@@ -18,6 +18,53 @@ This repository implements and evaluates **three segmentation approaches**:
 | YOLO-only | ~0.4-0.6s | 12 | 12 | Misses background | ✅ Very Fast |
 | Hybrid | ~6-8s | 167-243 | 167-243 | Balanced | ⚖️ Balanced |
 
+## Pipeline Visualizations
+
+### Three Approaches Compared
+
+<p align="center">
+  <img src="writeup/demo_pics/pipeline-hierarchical.png" width="100%">
+  <br><i>Hierarchical Baseline: Dense point grid with adaptive refinement</i>
+</p>
+
+<p align="center">
+  <img src="writeup/demo_pics/pipeline-yolo-only.png" width="100%">
+  <br><i>YOLO-only: Fast object-centric segmentation</i>
+</p>
+
+<p align="center">
+  <img src="writeup/demo_pics/pipeline-hybrid.png" width="100%">
+  <br><i>Hybrid (Ours): YOLO for foreground + sparse points for background</i>
+</p>
+
+### Visual Comparison
+
+<p align="center">
+  <img src="writeup/demo_pics/visual_comparison.png" width="100%">
+  <br><i>Side-by-side comparison of segmentation results</i>
+</p>
+
+### Why Hybrid is Superior
+
+**1. ⚡ 3-8× Faster than Hierarchical**  
+By using YOLO to detect salient foreground objects first, we avoid expensive dense point sampling across the entire image. Sparse points only fill in the gaps.
+
+**2. 🎯 Better Coverage than YOLO-only**  
+YOLO excels at prominent objects but misses small items, textures, and background elements. Our sparse point sampling captures these missed regions without sacrificing category information.
+
+**3. 🧠 Smart Resource Allocation**  
+- YOLO handles ~12 high-confidence objects (with category labels)
+- Sparse points focus on the remaining ~155-230 uncovered regions  
+- Total: ~167-243 decoder calls vs. hierarchical's thousands of dense grid points
+
+**4. 🔄 Zero Redundancy**  
+The coverage mask ensures we never segment the same region twice. Sparse points are only sampled where YOLO hasn't already provided coverage.
+
+**5. 📊 Balanced Performance**  
+Achieves competitive AR/mIoU metrics (comparable to hierarchical) while maintaining practical inference speed (6-8s vs 31-44s).
+
+**The Bottom Line**: Hybrid combines the speed of detector-guided segmentation with the completeness of dense sampling, without the computational overhead of either extreme.
+
 ## Architecture
 
 ### TinySAM Model
@@ -159,6 +206,14 @@ Based on COCO evaluation (see `outputs/benchmark_coco_*/summary.json`):
 ### Class-Agnostic Comparison (AR, mIoU)
 - **Hierarchical**: High AR/mIoU but very slow (31-44s)
 - **Hybrid**: 3-8× faster with competitive AR/mIoU (6-8s)
+
+### Visual Results on Real Images
+
+<p align="center">
+  <img src="writeup/demo_pics/visual_comparison2.png" width="49%">
+  <img src="writeup/demo_pics/visual_comparison3.png" width="49%">
+  <br><i>Hybrid approach successfully segments both foreground objects (people, furniture) and background elements (walls, textures)</i>
+</p>
 
 ## Repository Structure
 
