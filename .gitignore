@@ -1,0 +1,70 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual environments
+env/
+venv/
+ENV/
+tinysam_env/
+TinySAM/tinysam_env/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Model weights (large files - download separately)
+*.pth
+*.pt
+*.onnx
+*.trt
+*.engine
+
+# Dataset images (COCO val2017 is ~1GB)
+TinySAM/eval/val2017/
+learning_pref/data/
+
+# Generated outputs
+outputs/
+TinySAM/outputs/
+runs/
+yolov12/runs/
+
+# Logs
+*.log
+logs/
+yolov12/logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# Compressed files
+*.zip
+*.tar.gz
+*.rar
+
+# Specific large folders
+TinySAM/eval/val2017/
+TinySAM/eval/coco_res_tinysam.json
+
+# But keep demo images and framework diagrams
+!TinySAM/fig/*.jpg
+!TinySAM/fig/*.png
+!writeup/demo_pics/*.png
+

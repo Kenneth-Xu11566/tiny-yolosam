@@ -1,0 +1,16 @@
+Table X: Detector-based evaluation (COCO val2017 subset, 500 images)
+
+System                          AP     APs    APm    APl   Time/img (s)  Calls/img
+----------------------------------------------------------------------------------
+ViTDet→TinySAM (baseline)      0.413  0.249  0.455  0.583      1.20          19.0
+YOLO→TinySAM                   0.339  0.179  0.366  0.510      0.50           8.8
+Hybrid (YOLO boxes only)       0.339  0.179  0.366  0.510     10.39         179.4
+Note: Hybrid AP uses YOLO-box masks only; sparse-point masks are class-agnostic.
+
+
+Table Y: Class-agnostic comparison (same subset, coverage-focused)
+
+System                        AR     mIoU  Coverage  Time/img (s)  Calls/img
+-----------------------------------------------------------------------------
+Hierarchical (baseline)      0.186  0.212   0.186        49.20         13.2
+Hybrid (YOLO + sparse)       0.762  0.667   0.762        10.39        179.4

@@ -1,0 +1,4 @@
+Model                               Measured        Expected       
+------------------------------------------------------------
+TinySAM (Full Precision)            36.74 GFLOPs    42.00 GFLOPs   
+Q-TinySAM (Quantized W8A8)         ~18.37 GFLOPs    20.30 GFLOPs   
