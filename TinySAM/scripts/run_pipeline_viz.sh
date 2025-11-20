@@ -20,7 +20,7 @@ python TinySAM/scripts/visualize_pipeline_steps.py \
   --iou 0.55 \
   --max-det 350 \
   --grid-size 16 \
-  --mode both \
+  --mode all \
   --output-dir outputs/pipeline_viz
 
 echo ""

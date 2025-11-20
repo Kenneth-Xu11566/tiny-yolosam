@@ -21,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from tinysam import sam_model_registry, SamPredictor
 from tinysam.hierarchical_mask_generator import SamHierarchicalMaskGenerator
+from tinysam.batch_utils import batch_point_prompts, batch_box_prompts
 from ultralytics import YOLO
 
 
@@ -117,20 +118,16 @@ def benchmark_system2_yolo_only(image, sam_weights, yolo_weights, conf, iou, max
     predictor = SamPredictor(sam)
     predictor.set_image(image)
     
-    # Count decoder calls
-    decoder_calls = 0
-    masks_list = []
-    scores_list = []
-    
+    # Use batch processing for boxes
     start_time = time.time()
-    for box in boxes:
-        masks, scores, _ = predictor.predict(box=box)
-        decoder_calls += 1
-        
-        best_idx = scores.argmax()
-        masks_list.append(masks[best_idx])
-        scores_list.append(scores[best_idx])
+    masks_list, scores_list = batch_box_prompts(
+        predictor=predictor,
+        boxes=boxes,
+        batch_size=32,
+        verbose=True
+    )
     latency = time.time() - start_time
+    decoder_calls = len(boxes)  # Still counts logical decoder calls
     
     # Save results
     result = {
@@ -180,18 +177,18 @@ def benchmark_system3_hybrid(image, sam_weights, yolo_weights, conf, iou, max_de
     predictor = SamPredictor(sam)
     predictor.set_image(image)
     
-    # Get YOLO masks and build coverage
-    yolo_masks = []
-    yolo_scores = []
-    coverage_mask = np.zeros(image.shape[:2], dtype=bool)
-    
+    # Get YOLO masks and build coverage using batch processing
     yolo_start = time.time()
-    for box in boxes:
-        masks, scores, _ = predictor.predict(box=box)
-        best_idx = scores.argmax()
-        mask = masks[best_idx]
-        yolo_masks.append(mask)
-        yolo_scores.append(scores[best_idx])
+    yolo_masks, yolo_scores = batch_box_prompts(
+        predictor=predictor,
+        boxes=boxes,
+        batch_size=32,
+        verbose=True
+    )
+    
+    # Build coverage mask
+    coverage_mask = np.zeros(image.shape[:2], dtype=bool)
+    for mask in yolo_masks:
         coverage_mask |= mask
     yolo_time = time.time() - yolo_start
     
@@ -209,19 +206,18 @@ def benchmark_system3_hybrid(image, sam_weights, yolo_weights, conf, iou, max_de
     
     print(f"Sparse points:       {len(sparse_points)}")
     
-    # Point prompts
-    point_masks = []
-    point_scores = []
-    
+    # Point prompts using batch processing
     point_start = time.time()
-    for pt in sparse_points:
-        masks, scores, _ = predictor.predict(
-            point_coords=np.array([pt]),
-            point_labels=np.array([1])
-        )
-        best_idx = scores.argmax()
-        point_masks.append(masks[best_idx])
-        point_scores.append(scores[best_idx])
+    point_masks, point_scores = batch_point_prompts(
+        predictor=predictor,
+        points=sparse_points,
+        batch_size=64,
+        multimask_output=True,
+        return_best_only=True,
+        min_confidence=0.7,
+        min_area=100,
+        verbose=True
+    )
     point_time = time.time() - point_start
     
     total_time = yolo_time + point_time

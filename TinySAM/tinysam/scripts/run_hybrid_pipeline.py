@@ -18,6 +18,7 @@ import time
 # Add TinySAM to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from tinysam import sam_model_registry, SamPredictor
+from tinysam.batch_utils import batch_point_prompts
 
 
 def load_coverage_mask(metadata_path, image_shape):
@@ -66,28 +67,23 @@ def sample_sparse_grid(image_shape, grid_size=16, coverage_mask=None):
     return points
 
 
-def run_tinysam_point_prompts(predictor, points, image):
-    """Step 5: Run TinySAM on sparse point prompts."""
-    print(f"[Step 5] Running TinySAM on {len(points)} point prompts...")
+def run_tinysam_point_prompts(predictor, points, image, batch_size=64, min_confidence=0.7):
+    """Step 5: Run TinySAM on sparse point prompts with batch processing."""
+    print(f"[Step 5] Running TinySAM on {len(points)} point prompts (batch_size={batch_size})...")
     
     predictor.set_image(image)
     
-    masks_list = []
-    scores_list = []
-    
-    for pt in points:
-        point_coords = np.array([pt])
-        point_labels = np.array([1])
-        
-        masks, scores, _ = predictor.predict(
-            point_coords=point_coords,
-            point_labels=point_labels
-        )
-        
-        # Take highest-score mask
-        best_idx = scores.argmax()
-        masks_list.append(masks[best_idx])
-        scores_list.append(scores[best_idx])
+    # Use batch processing for efficient inference
+    masks_list, scores_list = batch_point_prompts(
+        predictor=predictor,
+        points=points,
+        batch_size=batch_size,
+        multimask_output=True,  # Generate 3 masks per point
+        return_best_only=True,  # Only keep the best mask per point
+        min_confidence=min_confidence,  # Filter low-quality masks
+        min_area=100,  # Filter very small masks
+        verbose=True
+    )
     
     print(f"[Step 5] Generated {len(masks_list)} masks from point prompts")
     return masks_list, scores_list
@@ -173,6 +169,8 @@ def main():
     parser.add_argument('--grid-size', type=int, default=16, help='Sparse grid size (default: 16x16)')
     parser.add_argument('--iou-threshold', type=float, default=0.7, help='IoU threshold for NMS')
     parser.add_argument('--min-area', type=int, default=100, help='Minimum mask area (pixels)')
+    parser.add_argument('--batch-size', type=int, default=64, help='Batch size for point prompts')
+    parser.add_argument('--min-confidence', type=float, default=0.7, help='Minimum confidence for point masks')
     parser.add_argument('--output-dir', default='outputs/hybrid_final', help='Output directory')
     args = parser.parse_args()
     
@@ -195,7 +193,11 @@ def main():
     predictor = SamPredictor(sam)
     
     start_time = time.time()
-    point_masks, point_scores = run_tinysam_point_prompts(predictor, sparse_points, image)
+    point_masks, point_scores = run_tinysam_point_prompts(
+        predictor, sparse_points, image, 
+        batch_size=args.batch_size,
+        min_confidence=args.min_confidence
+    )
     point_time = time.time() - start_time
     
     # Load YOLO-guided masks from Step 2
