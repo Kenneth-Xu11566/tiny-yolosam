@@ -33,6 +33,7 @@ import torch
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from tinysam import sam_model_registry, SamPredictor
 from tinysam.hierarchical_mask_generator import SamHierarchicalMaskGenerator
+from tinysam.batch_utils import batch_point_prompts, batch_box_prompts
 from ultralytics import YOLO
 
 # YOLO class index to COCO category ID mapping
@@ -499,22 +500,26 @@ def eval_system3_hybrid(images_info, coco_gt, sam_weights, yolo_weights, conf, i
                 x = int((j + 0.5) * cell_w)
                 if not coverage_mask[y, x]:
                     sparse_points.append([x, y])
+        sparse_points = np.array(sparse_points) if len(sparse_points) > 0 else np.array([]).reshape(0, 2)
         
-        # Point prompts
-        
-        for pt in sparse_points:
-            masks, mask_scores, _ = predictor.predict(
-                point_coords=np.array([pt]),
-                point_labels=np.array([1])
+        # Point prompts using batch processing
+        if len(sparse_points) > 0:
+            point_masks, point_scores = batch_point_prompts(
+                predictor=predictor,
+                points=sparse_points,
+                batch_size=64,
+                multimask_output=True,
+                return_best_only=True,
+                min_confidence=0.0,  # Keep all for evaluation
+                min_area=0,  # Keep all for evaluation
+                verbose=False
             )
-            total_decoder_calls += 1
-            
-            best_idx = mask_scores.argmax()
-            mask = masks[best_idx]
-            all_masks_for_img.append(mask)
-            
-            # Note: sparse point masks are NOT added to AP evaluation
-            # They are class-agnostic and only used for coverage metrics
+            all_masks_for_img.extend(point_masks)
+            # Count logical decoder calls (still one per point conceptually)
+            total_decoder_calls += len(sparse_points)
+        
+        # Note: sparse point masks are NOT added to AP evaluation
+        # They are class-agnostic and only used for coverage metrics
         
         elapsed = time.time() - start_time
         total_time += elapsed
@@ -658,32 +663,44 @@ def main():
     print("="*90)
     print("Note: Hybrid AP computed from YOLO box masks only (sparse points are class-agnostic)")
     
-    # Print class-agnostic comparison
-    print("\n" + "="*90)
-    print("CLASS-AGNOSTIC COMPARISON (Hierarchical vs Hybrid)")
-    print("="*90)
-    print(f"{'System':<30} {'AR':<8} {'mIoU':<8} {'Coverage':<10} {'Time/img':<10} {'Calls/img':<10}")
-    print("-"*90)
-    
-    hier = results['hierarchical']
-    hybrid = results['system3']
-    print(f"{'Hierarchical (baseline)':<30} {hier['AR']:<8.3f} {hier['mean_IoU']:<8.3f} {hier['coverage']:<10.3f} "
-          f"{hier['avg_time_per_image']:<10.2f} {hier['avg_decoder_calls']:<10.1f}")
-    print(f"{'Hybrid (YOLO+sparse)':<30} {hybrid['AR']:<8.3f} {hybrid['mean_IoU']:<8.3f} {hybrid['coverage']:<10.3f} "
-          f"{hybrid['avg_time_per_image']:<10.2f} {hybrid['avg_decoder_calls']:<10.1f}")
-    
-    print("="*90)
-    
-    # Print insights
-    print("\nKEY INSIGHTS:")
-    print(f"  • ViTDet baseline:       {results['system1']['AP']*100:.1f}% AP (paper: 42.3%)")
-    print(f"  • YOLO-only:             {results['system2']['AP']*100:.1f}% AP")
-    print(f"  • Hybrid:                {results['system3']['AP']*100:.1f}% AP")
-    print(f"\n  • Hierarchical vs Hybrid:")
-    print(f"    - AR: {hier['AR']:.3f} vs {hybrid['AR']:.3f} ({(hybrid['AR']/hier['AR']-1)*100:+.1f}%)")
-    print(f"    - mIoU: {hier['mean_IoU']:.3f} vs {hybrid['mean_IoU']:.3f} ({(hybrid['mean_IoU']/hier['mean_IoU']-1)*100:+.1f}%)")
-    print(f"    - Speedup: {hier['avg_time_per_image']/hybrid['avg_time_per_image']:.1f}x faster")
-    print("="*90)
+    # Print class-agnostic comparison (only if hierarchical results exist)
+    if 'hierarchical' in results:
+        print("\n" + "="*90)
+        print("CLASS-AGNOSTIC COMPARISON (Hierarchical vs Hybrid)")
+        print("="*90)
+        print(f"{'System':<30} {'AR':<8} {'mIoU':<8} {'Coverage':<10} {'Time/img':<10} {'Calls/img':<10}")
+        print("-"*90)
+        
+        hier = results['hierarchical']
+        hybrid = results['system3']
+        print(f"{'Hierarchical (baseline)':<30} {hier['AR']:<8.3f} {hier['mean_IoU']:<8.3f} {hier['coverage']:<10.3f} "
+              f"{hier['avg_time_per_image']:<10.2f} {hier['avg_decoder_calls']:<10.1f}")
+        print(f"{'Hybrid (YOLO+sparse)':<30} {hybrid['AR']:<8.3f} {hybrid['mean_IoU']:<8.3f} {hybrid['coverage']:<10.3f} "
+              f"{hybrid['avg_time_per_image']:<10.2f} {hybrid['avg_decoder_calls']:<10.1f}")
+        
+        print("="*90)
+        
+        # Print insights
+        print("\nKEY INSIGHTS:")
+        print(f"  • ViTDet baseline:       {results['system1']['AP']*100:.1f}% AP (paper: 42.3%)")
+        print(f"  • YOLO-only:             {results['system2']['AP']*100:.1f}% AP")
+        print(f"  • Hybrid:                {results['system3']['AP']*100:.1f}% AP")
+        print(f"\n  • Hierarchical vs Hybrid:")
+        print(f"    - AR: {hier['AR']:.3f} vs {hybrid['AR']:.3f} ({(hybrid['AR']/hier['AR']-1)*100:+.1f}%)")
+        print(f"    - mIoU: {hier['mean_IoU']:.3f} vs {hybrid['mean_IoU']:.3f} ({(hybrid['mean_IoU']/hier['mean_IoU']-1)*100:+.1f}%)")
+        print(f"    - Speedup: {hier['avg_time_per_image']/hybrid['avg_time_per_image']:.1f}x faster")
+        print("="*90)
+    else:
+        print("\nKEY INSIGHTS:")
+        print(f"  • ViTDet baseline:       {results['system1']['AP']*100:.1f}% AP (paper: 42.3%)")
+        print(f"  • YOLO-only:             {results['system2']['AP']*100:.1f}% AP")
+        print(f"  • Hybrid:                {results['system3']['AP']*100:.1f}% AP")
+        if 'AR' in results['system3']:
+            print(f"\n  • Hybrid class-agnostic metrics:")
+            print(f"    - AR: {results['system3']['AR']:.3f}")
+            print(f"    - mIoU: {results['system3']['mean_IoU']:.3f}")
+            print(f"    - Coverage: {results['system3']['coverage']:.3f}")
+        print("="*90)
     
     # Save summary
     with open(os.path.join(args.output_dir, 'summary.json'), 'w') as f:

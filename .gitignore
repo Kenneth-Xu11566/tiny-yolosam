@@ -68,3 +68,6 @@ TinySAM/eval/coco_res_tinysam.json
 !TinySAM/fig/*.png
 !writeup/demo_pics/*.png
 
+# Exception: ignore demo.png
+TinySAM/fig/demo.png
+
